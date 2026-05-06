@@ -14,13 +14,13 @@ String itemNames[7] = {
   "Relationships", "Community"
 };
 
-#define NUM_TILES 12
+#define NUM_TILES 16
 char tiles[NUM_TILES];
 int trapPositions[4];
 int trapIndex;
 
 int cols = 4;
-int rows = 3;
+int rows = 4;
 
 // -------- GAME STATE --------
 enum GameState {
@@ -101,7 +101,6 @@ long debounceDelay     = 50;
 // ================================================================
 void setup() {
   Serial.begin(9600);
-  randomSeed(analogRead(A5));
 
   pinMode(buttonPin,  INPUT);
   pinMode(BUTTON9,    INPUT_PULLUP);
@@ -153,15 +152,37 @@ void showMessage(String line1, String line2 = "") {
   display.display();
 }
 
-void showMap() {
+
+// Maps button ID (1-10) to a tile index on the 4x4 grid
+int buttonToTile(int buttonId) {
+  //          unused  B1   B2   B3  B4  B5   B6  B7  B8  B9  B10
+  int map[] = { -1,   14,  13,   8,  9,  11,   4,  1,  2,   5,   7 };
+  if (buttonId < 1 || buttonId > 10) return -1;
+  return map[buttonId];
+}
+
+void generateBoard() {
+  for (int i = 0; i < NUM_TILES; i++) tiles[i] = ' ';
+
+  for (int i = 0; i < 4; i++) {
+    int tileIdx = buttonToTile(trapArray[i]);
+    if (tileIdx >= 0 && tileIdx < NUM_TILES) {
+      tiles[tileIdx] = '*';
+      trapPositions[i] = tileIdx;
+    }
+  }
+}
+
+void showMap(int playerIndex) {
   display.clearDisplay();
   display.drawRect(0, 0, 84, 48, BLACK);
 
-  int cellW = 84 / cols;
-  int cellH = 48 / rows;
+  int cellW = 84 / cols;  // = 21
+  int cellH = 48 / rows;  // = 12
 
-  int c = trapIndex % cols;
-  int r = trapIndex / cols;
+  int idx = trapPositions[playerIndex];
+  int c = idx % cols;
+  int r = idx / cols;
   int x = c * cellW + cellW / 2 - 3;
   int y = r * cellH + cellH / 2 - 4;
 
@@ -169,33 +190,26 @@ void showMap() {
   display.setTextSize(1);
   display.setTextColor(BLACK);
   display.print("*");
+
   display.display();
 }
 
-void generateBoard() {
-  for (int i = 0; i < NUM_TILES; i++) tiles[i] = ' ';
 
-  for (int i = 0; i < 4; i++) {
-    int idx;
-    do { idx = random(0, NUM_TILES); } while (tiles[idx] == '*');
-    tiles[idx] = '*';
-    trapPositions[i] = idx;
-  }
-  trapIndex = trapPositions[random(0, 4)];
-}
+
 
 void startMap() {
   showMessage("Start Game!");
   delay(2000);
 
-  for (int i = 1; i <= 4; i++) {
-    showMessage("Player " + String(i));
+  generateBoard(); // only once!
+
+  for (int i = 0; i < 4; i++) {
+    showMessage("Player " + String(i + 1));
     delay(1000);
     showMessage("YOU CAN LOOK");
     delay(2000);
 
-    generateBoard();
-    showMap();
+    showMap(i); // player 0 → trap 2, player 1 → trap 5, etc.
     delay(2500);
 
     display.clearDisplay();
@@ -380,6 +394,8 @@ void loop() {
       setColor(255, 255, 255);       // RGB white
       showMessage(itemNames[buttonValue], "Item!");
       delay(1500);
+      showMessage("Continue");
+      delay(1500);
 
       correctCount++;
 
@@ -398,7 +414,7 @@ void loop() {
           return;
         }
 
-        showMessage("Level " + String(level + 1) + "Unlocked!");
+        showMessage("Level " + String(level + 1) + "Unlock!");
         delay(1500);
       }
       setColor(0, 0, 0);
@@ -411,6 +427,8 @@ void loop() {
       showMessage("Wrong Level!");
       delay(1500);
       setColor(0, 0, 0);
+      showMessage("Continue");
+      delay(1500);
     }
 
     return;
