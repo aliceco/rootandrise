@@ -13,11 +13,15 @@
 Adafruit_PCD8544 display = Adafruit_PCD8544(6, 5, 4, 3, 2);
 
 // Item names (index matches button value 1–6)
-String itemNames[7] = {
+String itemNames[11] = {
   "",
   "Food", "Money",
   "Shelter", "Water",
-  "Family", "Community"
+  "Family", "Community",
+  "",            // 7 trap - unused
+  "Money",       // 8  ← add name for button 8
+  "",            // 9 trap - unused
+  "Relations"    // 10 ← add name for button 10
 };
 //LED Strip
 #define NUM_LEDS 10
@@ -54,6 +58,7 @@ GameState state = START;
 // correctCount: how many items found in the CURRENT level (0 or 1)
 int correctCount = 0;
 int level = 0;
+int energyUse = 0; //if user clicks more than 8 times a button the leds will turn off to the opposite side it turned on
 
 // correctArray[level][0..1] = the two button IDs that are correct for that level
 int correctArray[3][2] = {
@@ -80,7 +85,7 @@ const int bluePin  = 13;
 
 // Levers
 const int BUTTON9  = 9;
-const int BUTTON10 = 10;
+const int BUTTON10 = A2;
 
 // --- Button IDs ---
 const int BUTTON1 = 1;
@@ -107,6 +112,7 @@ int  buttonState       = LOW;
 int  lastButtonState   = LOW;
 int  button10State     = LOW;
 int  lastLeverState9   = HIGH;   // INPUT_PULLUP: unpressed = HIGH
+int  lastButtonState10 = HIGH;   // INPUT_PULLUP: unpressed = HIGH
 long lastDebounceTime  = 0;
 long debounceDelay     = 50;
 
@@ -117,7 +123,7 @@ void setup() {
 
   pinMode(buttonPin,  INPUT);
   pinMode(BUTTON9,    INPUT_PULLUP);
-  pinMode(BUTTON10,   INPUT);
+  pinMode(BUTTON10,   INPUT_PULLUP);
 
   pinMode(redPin,    OUTPUT);
   pinMode(greenPin,  OUTPUT);
@@ -133,6 +139,7 @@ void setup() {
 
   delay(100); // let pins settle after pinMode
   lastLeverState9  = digitalRead(BUTTON9);
+  lastButtonState10 = digitalRead(BUTTON10);
   
   Serial.print("Lever 9 init: ");  Serial.println(lastLeverState9);
   
@@ -146,7 +153,7 @@ void setup() {
   FastLED.addLeds<APA102, DATA_PIN, CLOCK_PIN, BGR>(leds, NUM_LEDS);
   
 
-  FastLED.setBrightness(20);
+  FastLED.setBrightness(10);
 }
 
 //LED
@@ -217,7 +224,7 @@ void showMap(int playerIndex) {
 
 
 void crankingPower(){
-  showMessage("Start Cranking!");
+  showMessage("Start  Crankin");
   delay(5000);
   for (int i = 0; i <= NUM_LEDS; i++) {
        leds[i] = CRGB(255, 80, 0);
@@ -226,6 +233,8 @@ void crankingPower(){
        delay(200);
    }
 }
+
+
 
 void startMap() {
   showMessage("Start  Game!");
@@ -279,7 +288,7 @@ void updateLevelLamps(int lvl) {
 // ================================================================
 int getButtonValue() {
   int currentLeverState9  = digitalRead(BUTTON9);
-  int button10State       = digitalRead(BUTTON10);
+  int currentButton10State       = digitalRead(BUTTON10);
   // Serial.println(currentLeverState10);
 
   if (currentLeverState9 != lastLeverState9) {
@@ -288,11 +297,13 @@ int getButtonValue() {
 
     return 9;
   }
-  if (button10State == HIGH) {
-    
-    Serial.print("BUTTOn 10");
-    return 10;
-  }
+ if (currentButton10State != lastButtonState10) {
+    lastButtonState10 = currentButton10State;
+    if (currentButton10State == LOW) {
+        Serial.print("BUTTON 10");
+        return 10;
+    }
+}
 
   int reading = analogRead(buttonPin);
   Serial.println(reading);
@@ -396,8 +407,9 @@ void loop() {
     crankingPower();
     level        = 0;
     correctCount = 0;
+    energyUse    = 0;
     updateLevelLamps(0);
-    // startMap();
+    startMap();
     state = PLAYING;
     // return;
   }
@@ -409,7 +421,41 @@ void loop() {
 
 
     PressResult result = checkButtonPress(buttonValue);
+    energyUse++;
+    Serial.print(energyUse);
 
+    if (energyUse == 6) {
+  // Turn off LEDs 7, 8, 9 (last 3) one by one
+    for (int i = NUM_LEDS - 1; i >= 7; i--) {
+      leds[i] = CRGB::Black;
+      FastLED.show();
+      delay(150);
+    }
+      showMessage("LOW POWER!");
+      delay(500);
+    } else if (energyUse == 8) {
+      // Turn off LEDs 4, 5, 6 (middle 3) one by one
+      for (int i = 6; i >= 4; i--) {
+        leds[i] = CRGB::Black;
+        FastLED.show();
+        delay(150);
+      }
+      showMessage("LOW POWER!");
+      delay(500);
+    } else if (energyUse >= 10) {
+      // Turn off LEDs 3, 2, 1, 0 (first 4) one by one
+      for (int i = 3; i >= 0; i--) {
+        leds[i] = CRGB::Black;
+        FastLED.show();
+        delay(150);
+      }
+      showMessage("LOST POWER!");
+      delay(200);
+      showMessage("GAME OVER!!");
+      delay(500);
+      state = GAME_OVER;  // actually trigger game over
+      return;
+    }
     // ---- TRAP ----
     if (result == TRAP) {
       Serial.println("TRAP");
@@ -441,7 +487,7 @@ void loop() {
         if (level == 3) {
           // WIN
           setColor(0, 255, 0);
-          showMessage("YOU WIN!");
+          showMessage("YOU WIN!!!!");
           delay(3000);
           state = GAME_OVER;
           return;
@@ -474,6 +520,11 @@ void loop() {
     updateLevelLamps(0);
     setColor(0, 0, 0);
     delay(2000);
+    for (int i = NUM_LEDS - 1; i >= 0; i--) {
+        leds[i] = CRGB::Black;
+        FastLED.show();
+        delay(150);
+    }
     state = START;
   }
 }
