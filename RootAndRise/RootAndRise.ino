@@ -1,7 +1,13 @@
+#include <FastLED.h>
+
 // Display 
 #include <SPI.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_PCD8544.h>
+
+//LED Strips
+#define DATA_PIN 11
+#define CLOCK_PIN 13
 
 // Display pins
 Adafruit_PCD8544 display = Adafruit_PCD8544(6, 5, 4, 3, 2);
@@ -9,11 +15,18 @@ Adafruit_PCD8544 display = Adafruit_PCD8544(6, 5, 4, 3, 2);
 // Item names (index matches button value 1–6)
 String itemNames[7] = {
   "",
-  "Food", "Water",
-  "Shelter", "Money",
-  "Relationships", "Community"
+  "Food", "Money",
+  "Shelter", "Water",
+  "Family", "Community"
 };
+//LED Strip
+#define NUM_LEDS 10
+CRGB leds[NUM_LEDS];
 
+int fadeAmount = 5;
+int brightness = 0;
+
+//Display
 #define NUM_TILES 16
 char tiles[NUM_TILES];
 int trapPositions[4];
@@ -32,7 +45,7 @@ enum GameState {
 enum PressResult {
   TRAP = 1,
   HIT  = 2,
-  MISS = 3
+  MISS1 = 3
 };
 
 GameState state = START;
@@ -80,8 +93,8 @@ const int BUTTON7 = 7;
 const int BUTTON8 = 8;
 
 // Analog ranges
-const int BUTTON1LOW = 1000; const int BUTTON1HIGH = 1024;
-const int BUTTON2LOW = 950;  const int BUTTON2HIGH = 999;
+const int BUTTON1LOW = 980; const int BUTTON1HIGH = 1024;
+const int BUTTON2LOW = 950;  const int BUTTON2HIGH = 979;
 const int BUTTON3LOW = 800;  const int BUTTON3HIGH = 949;
 const int BUTTON4LOW = 720;  const int BUTTON4HIGH = 799;
 const int BUTTON5LOW = 650;  const int BUTTON5HIGH = 719;
@@ -92,8 +105,8 @@ const int BUTTON8LOW = 100;    const int BUTTON8HIGH = 549;
 // Debounce / state
 int  buttonState       = LOW;
 int  lastButtonState   = LOW;
+int  button10State     = LOW;
 int  lastLeverState9   = HIGH;   // INPUT_PULLUP: unpressed = HIGH
-int  lastLeverState10  = HIGH;
 long lastDebounceTime  = 0;
 long debounceDelay     = 50;
 
@@ -104,7 +117,7 @@ void setup() {
 
   pinMode(buttonPin,  INPUT);
   pinMode(BUTTON9,    INPUT_PULLUP);
-  pinMode(BUTTON10,   INPUT_PULLUP);
+  pinMode(BUTTON10,   INPUT);
 
   pinMode(redPin,    OUTPUT);
   pinMode(greenPin,  OUTPUT);
@@ -120,16 +133,24 @@ void setup() {
 
   delay(100); // let pins settle after pinMode
   lastLeverState9  = digitalRead(BUTTON9);
-  lastLeverState10 = digitalRead(BUTTON10);
+  
   Serial.print("Lever 9 init: ");  Serial.println(lastLeverState9);
-  Serial.print("Lever 10 init: "); Serial.println(lastLeverState10);
+  
 
   display.begin();
   display.setContrast(57);
   display.clearDisplay();
   display.display();
+
+  // Serial.println("resetting leds");
+  FastLED.addLeds<APA102, DATA_PIN, CLOCK_PIN, BGR>(leds, NUM_LEDS);
+  
+
+  FastLED.setBrightness(20);
 }
 
+//LED
+void fadeall() { for(int i = 0; i < NUM_LEDS; i++) { leds[i].nscale8(250); } }
 
 // ================================================================
 //  DISPLAY 
@@ -195,10 +216,19 @@ void showMap(int playerIndex) {
 }
 
 
-
+void crankingPower(){
+  showMessage("Start Cranking!");
+  delay(5000);
+  for (int i = 0; i <= NUM_LEDS; i++) {
+       leds[i] = CRGB(255, 80, 0);
+       FastLED.show();
+       fadeall();
+       delay(200);
+   }
+}
 
 void startMap() {
-  showMessage("Start Game!");
+  showMessage("Start  Game!");
   delay(2000);
 
   generateBoard(); // only once!
@@ -249,18 +279,23 @@ void updateLevelLamps(int lvl) {
 // ================================================================
 int getButtonValue() {
   int currentLeverState9  = digitalRead(BUTTON9);
-  int currentLeverState10 = digitalRead(BUTTON10);
+  int button10State       = digitalRead(BUTTON10);
+  // Serial.println(currentLeverState10);
 
   if (currentLeverState9 != lastLeverState9) {
     lastLeverState9 = currentLeverState9;
+    Serial.print("lever9");
+
     return 9;
   }
-  if (currentLeverState10 != lastLeverState10) {
-    lastLeverState10 = currentLeverState10;
+  if (button10State == HIGH) {
+    
+    Serial.print("BUTTOn 10");
     return 10;
   }
 
   int reading = analogRead(buttonPin);
+  Serial.println(reading);
   int tmpButtonState = LOW;
 
   if      (reading >= BUTTON1LOW && reading <= BUTTON1HIGH) tmpButtonState = BUTTON1;
@@ -306,7 +341,7 @@ PressResult checkButtonPress(int buttonValue) {
   }
 
   // Otherwise it's a valid item button but for the wrong level
-  return MISS;
+  return MISS1;
 }
 
 
@@ -356,24 +391,22 @@ void loop() {
 
   // ---------- START ----------
   if (state == START) {
+    fill_solid(leds, 10, CRGB::Black); // turn them off
+    FastLED.show();
+    crankingPower();
     level        = 0;
     correctCount = 0;
     updateLevelLamps(0);
-    startMap();
+    // startMap();
     state = PLAYING;
     // return;
   }
 
   // ---------- PLAYING ----------
   if (state == PLAYING) {
-    Serial.println("Play");
     int buttonValue = getButtonValue();
     if (buttonValue == 0) return;
 
-    Serial.print("Level: ");
-    Serial.print(level);
-    Serial.print("| Count: ");
-    Serial.println(correctCount);
 
     PressResult result = checkButtonPress(buttonValue);
 
@@ -395,7 +428,7 @@ void loop() {
       showMessage(itemNames[buttonValue], "Item!");
       delay(1500);
       showMessage("Continue");
-      delay(1500);
+      delay(500);
 
       correctCount++;
 
@@ -415,20 +448,20 @@ void loop() {
         }
 
         showMessage("Level " + String(level + 1) + "Unlock!");
-        delay(1500);
+        delay(500);
       }
       setColor(0, 0, 0);
     }
 
     // ---- MISS (valid item but wrong level) ----
-    else if (result == MISS) {
-      Serial.println("MISS");
+    else if (result == MISS1) {
+      Serial.println("miss");
       setColor(255, 255, 0);         // RGB yellow
       showMessage("Wrong Level!");
-      delay(1500);
+      delay(500);
       setColor(0, 0, 0);
       showMessage("Continue");
-      delay(1500);
+      delay(200);
     }
 
     return;
